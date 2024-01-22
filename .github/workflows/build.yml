@@ -1,40 +1,36 @@
+name: Build (with Buildozer master)
 on:
   push:
-    branches: [ main ]
+    branches-ignore:
+      - data
+      - gh-pages
+    tags:
+      - '**'
   pull_request:
-    branches: [ main ]
+    branches-ignore:
+      - data
+      - gh-pages
   schedule:
-    - cron: '0 0 1,15 * *'
+      - cron: 0 0 */4 * * # at 00:00 UTC every fourth day
 
 jobs:
-  build:
+  # Build job. Builds app for Android with Buildozer
+  build-android:
+    name: Build for Android (with Buildozer master)
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
-
-      - name: Get Date
-        id: get-date
-        run: |
-          echo "::set-output name=date::$(/bin/date -u "+%Y%m%d")"
-        shell: bash
-
-      - name: Cache Buildozer global directory
-        uses: actions/cache@v2
+      - name: Checkout
+        uses: actions/checkout@v2
         with:
-          path: .buildozer_global
-          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
-
-      - uses: actions/cache@v2
-        with:
-          path: .buildozer
-          key: ${{ runner.os }}-${{ steps.get-date.outputs.date }}-${{ hashFiles('buildozer.spec') }}
+          path: master
 
       - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
+        uses: ./master # REPLACE WITH ArtemSBulgakov/buildozer-action@v1
         id: buildozer
         with:
-          command: echo y | buildozer -v android debug
+          repository_root: master
+          workdir: test_app
           buildozer_version: master
 
       - name: Upload artifacts
@@ -43,5 +39,18 @@ jobs:
           name: package
           path: ${{ steps.buildozer.outputs.filename }}
 
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          path: data
+          ref: data # Branch name
 
-          
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+          architecture: x64
+
+      - name: Push binary to data branch
+        if: github.event_name == 'push'
+        run: python master/.ci/move_binary.py "${{ steps.buildozer.outputs.filename }}" master data bin-with-master
